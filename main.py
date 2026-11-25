@@ -1,4 +1,5 @@
 import argparse
+from datetime import datetime, timezone
 import logging
 from pathlib import Path
 import random
@@ -18,12 +19,25 @@ from src.data_preparation import (
 from src.model_training import train_and_evaluate
 
 
-def configure_logging() -> None:
-    """Configure structured console logging with timestamps."""
+def configure_logging(config: dict | None = None) -> None:
+    """Configure console and optional timestamped file logging from YAML settings."""
+    log_cfg = (config or {}).get("logging", {})
+    level_name = str(log_cfg.get("level", "INFO")).upper()
+    level = getattr(logging, level_name, logging.INFO)
+
+    handlers: list[logging.Handler] = [logging.StreamHandler(sys.stdout)]
+    if log_cfg.get("log_to_file", False) and config is not None:
+        logs_dir = Path(config.get("paths", {}).get("logs_dir", "logs"))
+        logs_dir.mkdir(parents=True, exist_ok=True)
+        ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        handlers.append(logging.FileHandler(logs_dir / f"pipeline_{ts}.log", encoding="utf-8"))
+
     logging.basicConfig(
-        level=logging.INFO,
+        level=level,
         format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
+        handlers=handlers,
+        force=True,
     )
 
 
@@ -64,17 +78,23 @@ def run_train(config: dict) -> dict:
         sklearn.__version__,
         seed,
     )
+    logger.info(
+        "Active Config | primary_metric=%s | cv_folds=%d | log_target=%s",
+        config["training"]["primary_metric"],
+        config["training"]["cv_folds"],
+        config["training"].get("log_transform_target", True),
+    )
 
     raw_df = load_raw_data(config["paths"]["raw_data"])
-    cleaned_df, _ = clean_news_data(raw_df, config, is_training=True)
+    cleaned_df, article_ids = clean_news_data(raw_df, config, is_training=True)
 
     processed_path = Path(config["paths"]["processed_data"])
     processed_path.parent.mkdir(parents=True, exist_ok=True)
     cleaned_df.to_csv(processed_path, index=False)
 
     X, y = split_features_target(cleaned_df, config["data"]["target_col"])
-    logger.info("Starting model training on %d articles (%d raw/engineered features)", len(X), len(X.columns))
-    summary = train_and_evaluate(X, y, config)
+    logger.info("Starting model training on %d articles (%d features)", len(X), len(X.columns))
+    summary = train_and_evaluate(X, y, config, article_ids=article_ids)
 
     logger.info(
         "Selected Best Model: %s (Test RMSLE: %.4f)",
@@ -95,7 +115,7 @@ def run_train(config: dict) -> dict:
 
 
 def run_predict(config: dict, input_file: str | Path, output_file: str | Path) -> pd.DataFrame:
-    """Generate predicted share counts and popularity tiers on new news articles."""
+    """Generate predicted share counts and vectorized popularity tiers on new articles."""
     logger = logging.getLogger(__name__)
     model_path = Path(config["paths"]["model_output"])
     if not model_path.exists():
@@ -110,10 +130,11 @@ def run_predict(config: dict, input_file: str | Path, output_file: str | Path) -
         cleaned_df = cleaned_df.drop(columns=[config["data"]["target_col"]])
 
     preds = np.clip(model.predict(cleaned_df), 0, None)
-    tiers = [
-        "Viral Potential (>3000 shares)" if p >= 3000 else ("Above Average (1400-3000)" if p >= 1400 else "Standard (<1400)")
-        for p in preds
-    ]
+    tiers = np.select(
+        [preds >= 3000, preds >= 1400],
+        ["Viral Potential (>3000 shares)", "Above Average (1400-3000)"],
+        default="Standard (<1400)",
+    )
 
     out_df = pd.DataFrame({
         "Predicted_Shares": np.round(preds).astype(int),
@@ -129,8 +150,8 @@ def run_predict(config: dict, input_file: str | Path, output_file: str | Path) -
     return out_df
 
 
-def main() -> int:
-    """CLI entry point returning 0 on success and 1 on failure."""
+def main(argv: list[str] | None = None) -> int:
+    """CLI entry point returning 0 on success and 1 on error."""
     configure_logging()
     logger = logging.getLogger(__name__)
 
@@ -140,16 +161,17 @@ def main() -> int:
     parser.add_argument("--input", default="data/new_articles.csv", help="Input file for prediction mode")
     parser.add_argument("--output", default="data/predictions.csv", help="Output file for prediction mode")
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     try:
         cfg = load_config(args.config)
+        configure_logging(cfg)
         if args.mode == "train":
             run_train(cfg)
         elif args.mode == "predict":
             run_predict(cfg, args.input, args.output)
         return 0
-    except Exception as exc:
-        logger.error("Pipeline execution failed: %s", exc)
+    except Exception:
+        logger.exception("Pipeline execution failed due to an unhandled error.")
         return 1
 
 
