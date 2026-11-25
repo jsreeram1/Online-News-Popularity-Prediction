@@ -1,0 +1,67 @@
+{
+  "run_timestamp_utc": "20261124T161342Z",
+  "selected_best_model": "HistGradientBoosting",
+  "best_test_rmsle": 0.6974,
+  "split_sizes": {
+    "train_rows": 28544,
+    "test_rows": 7136
+  },
+  "model_comparisons": {
+    "DummyBaseline": {
+      "best_params": {
+        "regressor__regressor__strategy": "median"
+      },
+      "cv_rmse": 12300.69,
+      "test_rmse": 8089.59,
+      "test_mae": 2355.23,
+      "test_rmsle": 0.9586,
+      "test_r2": -0.058
+    },
+    "RidgeRegression": {
+      "best_params": {
+        "regressor__regressor__alpha": 100.0
+      },
+      "cv_rmse": 9.722776257721872e+28,
+      "test_rmse": 17610.96,
+      "test_mae": 2385.85,
+      "test_rmsle": 0.8217,
+      "test_r2": -4.014
+    },
+    "RandomForest": {
+      "best_params": {
+        "regressor__regressor__max_depth": 10,
+        "regressor__regressor__min_samples_split": 5,
+        "regressor__regressor__n_estimators": 100
+      },
+      "cv_rmse": 10732.81,
+      "test_rmse": 6500.71,
+      "test_mae": 1776.15,
+      "test_rmsle": 0.7063,
+      "test_r2": 0.3168
+    },
+    "GradientBoosting": {
+      "best_params": {
+        "regressor__regressor__learning_rate": 0.1,
+        "regressor__regressor__max_depth": 3,
+        "regressor__regressor__n_estimators": 200
+      },
+      "cv_rmse": 10691.82,
+      "test_rmse": 6539.06,
+      "test_mae": 1767.52,
+      "test_rmsle": 0.7009,
+      "test_r2": 0.3087
+    },
+    "HistGradientBoosting": {
+      "best_params": {
+        "regressor__regressor__learning_rate": 0.1,
+        "regressor__regressor__max_depth": 8,
+        "regressor__regressor__max_iter": 150
+      },
+      "cv_rmse": 11025.15,
+      "test_rmse": 6682.07,
+      "test_mae": 1791.96,
+      "test_rmsle": 0.6974,
+      "test_r2": 0.2782
+    }
+  }
+}
